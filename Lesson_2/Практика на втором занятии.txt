@@ -1,0 +1,150 @@
+-- Выводим общее количество строк из таблицы flights
+SELECT count(*)
+FROM flights
+;
+
+
+-- Выводим уникальные сочетания полей departure_airport и arrival_airport с помощью группировок
+SELECT departure_airport
+ 	  ,arrival_airport
+  FROM flights
+ GROUP BY departure_airport
+ 		 ,arrival_airport
+;
+ 		
+ 		
+-- Выводим уникальные сочетания полей departure_airport и arrival_airport с помощью функции DISTINCT
+SELECT DISTINCT departure_airport
+ 	  ,arrival_airport
+  FROM flights 
+;
+
+
+-- Выводим список колонок таблицы flights с использованием технической таблицы information_schema."columns"
+ SELECT column_name
+   FROM information_schema."columns"
+  WHERE table_schema = 'bookings'
+    AND table_name   = 'flights'
+;
+
+
+-- Задание: Найти аэропорт с наибольшей географией отправления
+
+-- 3. Повторно находим кол-во уникальных рейсов для каждого аэропорта, как в шаге 1 
+SELECT f.departure_airport
+	  ,count(DISTINCT f.arrival_airport) AS airports_count
+  FROM flights f 
+ GROUP BY f.departure_airport
+ -- 4. Сравниваем кол-во уникальных рейсов для каждого аэропорта с максимальным кол-вом рейсов 
+ HAVING count(DISTINCT f.arrival_airport) = (
+ 										    -- 2. Используем полученную на шаге 1 таблицу temp_table, чтобы найти максимальное значение из колонки airports_count
+											SELECT max(airports_count)  -- 2.1 находим максимальное значение в колонке airports_count таблицы temp_table
+											  FROM 
+												(
+												-- 1. Вычисляем кол-во уникальных рейсов для каждого аэропорта 
+												-- и таблицу с результатом оформляем в подзапрос с именем temp_table
+												SELECT f.departure_airport  
+													  ,count(DISTINCT f.arrival_airport) AS airports_count  -- 1.3 Вычисляем кол-во уникальных (DISTINCT) аэропортов прибытия для каждого аэропорта отправления
+												  FROM flights f -- 1.1 Извлекаем данные из таблицы flights
+												 GROUP BY f.departure_airport  -- 1.2 Группируем данные по аэропорту отправление (оставляем только уникальные значения)
+												) AS temp_table  -- 1.4 Переименовываем полученную таблицу(подзапрос) в temp_table
+											)
+;
+
+
+
+-- Задача: 
+-- Посчитать для таблицы с билетами (ticket_flights):
+-- Количество билетов каждого класса;
+-- Сумму, максимум, минимум, среднее, медиану, моду, стандартное отклонение и дисперсию стоимости билетов каждого класса;
+
+SELECT fare_conditions
+	  ,count(ticket_no)  -- 2. Кол-во билетов для сгруппированных классов
+	  ,sum(amount)       -- 3. Сумма стоимости билетов по каждому классу
+	  ,max(amount)       -- 4. Максимальная стоимость билета по каждому классу
+	  ,min(amount)	     -- 5. Минимальная стоимость билета по каждому классу
+	  ,round(avg(amount), 2)  -- 6. Средняя стоимость билета по каждому классу, округленная до двух знаков после запятой с помощью функции round
+	  ,percentile_cont(0.5) WITHIN GROUP (ORDER BY amount)  -- 7. Медиана (50-й перцентиль) стоимости билета по каждому классу
+	  ,mode() WITHIN GROUP (ORDER BY amount)  -- 8. Мода
+	  ,stddev(amount)                         -- 9. Стандартное отклонение
+	  ,variance(amount)						  -- 10. Дисперсия
+  FROM ticket_flights
+ GROUP BY fare_conditions  -- 1. Группируем по классу бронирования
+;
+
+
+-- Для позведения числа в степень используется функция pow(x,y), где x - число, y - степень
+SELECT pow(10, 2);
+
+
+
+-- Задача: 
+-- Найти минимальную, среднюю и максимальную продолжительность полета для каждой модели самолёта. 
+-- Формат вывода: «часы:минуты»;
+
+SELECT aircraft_code 
+	  ,min(scheduled_arrival - scheduled_departure) AS min_time_gap  -- 3. Выводим минимальное время полёта (разность времени прилёта и между прилётом и вылетом (т.е. минимум от времени полёта)
+	  ,max(scheduled_arrival - scheduled_departure) AS max_time_gap  -- 4. Выводим максимальное время полёта для каждого самолёта
+	  ,avg(scheduled_arrival - scheduled_departure) AS avg_time_gap  -- 5. Выводим среднее время полёта для каждого самолёта
+	  -- 6. Для извлечения часа и минут можно воспользоваться разными функциями
+	  -- 6.1 Первый способ: использовать два раза extract для извлечения часа и минут, 
+	  -- затем объединить их с помощью склейки строк через ||
+	  ,extract('HOUR' FROM avg(scheduled_arrival - scheduled_departure))::TEXT
+	   || ':' ||
+	   extract('MINUTE' FROM avg(scheduled_arrival - scheduled_departure))::TEXT
+	   AS time_1
+	  -- 6.2 Второй способ извлечения времени в определенном формате - используем функцию to_char и через запятую задаём
+	  -- необходимый нам формат вывода. В нашем случае 'HH:MI'
+	  ,to_char(avg(scheduled_arrival - scheduled_departure), 'HH:MI')
+  FROM flights  -- 1. Выбираем таблицу flights
+ GROUP BY aircraft_code  -- 2. Группируем данные по аэропорту вылета
+;
+
+
+
+-- Задача: 
+-- Найти аэропорты (departure_airport), где количество рейсов превышает среднее количество рейсов по всем аэропортам;
+
+-- 3. Выводим кол-во рейсов для всех аэропортов и сравниваем это кол-во в HAVING со средним значением, которое мы получили в шаге 2 
+SELECT departure_airport
+	  ,count(*)
+  FROM flights
+ GROUP BY departure_airport
+ HAVING count(*) >
+(
+	-- 2. Считаем среднее кол-во вылетов по всем аэропортам используя таблицу, полученную на предыдущем шаге
+	SELECT avg(temp_table.flights_count)
+	  FROM 
+	(
+		-- 1. Считаем количество рейсов для каждого аэропорта используя группировку и функцию count()
+		SELECT count(*) AS flights_count
+		  FROM flights
+		 GROUP BY departure_airport 
+	) temp_table
+)
+ORDER BY count(*) desc
+;
+
+
+-- Задача: 
+-- Вывести номер бронирования, количество и список пассажиров в бронировании в виде массива. 
+-- Отсортировать по количеству пассажиров в обратном порядке.
+
+                                                		-- 3. Выводим:
+SELECT book_ref                                 		-- 3.1 Номер бронирования
+	  ,count(passenger_id) AS passenger_count   		-- 3.2 Кол-во пассажиров для каждого бронирования
+	  ,array_agg(passenger_name) AS passengers  		-- 3.3 ФИО пассажиров в виде массива для каждого бронирования
+  FROM tickets                                  -- 1. Забираем данные из таблицы   tickets													
+ GROUP BY book_ref									-- 2. Группируем данные по номеру бронирования
+ ORDER BY count(passenger_id) DESC  						-- 4. Сортируем данные по кол-ву пассажиров по убыванию
+;
+
+ 
+-- Проверяем, что каждому идентификатору пассажира (passenger_id) соответствует только одна запись в таблице tickets
+ SELECT passenger_id 
+	  ,count(passenger_name)
+  FROM tickets
+ GROUP BY passenger_id
+ HAVING count(passenger_name) > 1
+;
+ 
