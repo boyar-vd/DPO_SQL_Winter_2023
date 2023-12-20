@@ -1,0 +1,197 @@
+-- INNER JOIN и два способа заменить значения NULL
+
+SELECT 
+	-- первый способ замены NULL в поле o.price на среднее значение поля o.price с помощью COALESCE
+	COALESCE(o.price, (SELECT avg(price) FROM public.orders)) AS first_method  
+    -- второй способ замены NULL в поле o.price на среднее значение поля o.price с помощью конструкции CASE
+	,CASE 
+      	WHEN o.price IS NOT NULL
+      	THEN o.price
+      	ELSE (SELECT avg(price) FROM public.orders)
+      END AS second_method		
+      ,*
+  FROM public.restaurants r
+  JOIN public.orders o
+	ON r.restaurant_id = o.restaurant_id
+;
+
+
+-- Пример использования оператора UNION
+SELECT r.*
+  FROM public.restaurants r
+UNION
+SELECT r2.*
+ FROM public.restaurants r2
+  ;
+  
+
+-- Task 1
+-- Вывести идентификаторы перелётов за апрель 2017 года с указанием города вылета;
+ 
+SELECT f.flight_id 
+	  ,f.scheduled_departure 
+	  ,f.departure_airport 
+	  ,ad.city->>'ru' AS dep_city
+FROM flights f 
+LEFT JOIN airports_data ad 
+  ON f.departure_airport = ad.airport_code 
+WHERE f.scheduled_departure::text LIKE ('2017-04%')
+--BETWEEN '2017-04-01' AND '2017-05-01'
+
+
+-- Task 2
+-- Вывести идентификаторы перелётов за апрель 2017 года с указанием города вылета и прибытия на
+-- русском языке;
+
+SELECT f.flight_id 
+	  ,f.scheduled_departure 
+	  ,f.departure_airport 
+	  ,ad.city->>'ru' AS dep_city
+	  ,f.arrival_airport 
+	  ,ad2.city->>'ru' AS arr_city
+FROM flights f 
+LEFT JOIN airports_data ad 
+  ON f.departure_airport = ad.airport_code 
+LEFT JOIN airports_data ad2
+  ON f.arrival_airport = ad2.airport_code 
+WHERE f.scheduled_departure::text LIKE ('2017-04%')
+;
+
+
+-- Task 3
+-- Вывести: идентификатор и номер полёта, название аэропорта и город вылета, планируемое время
+-- вылета, код самолёта и его модель, номера билетов и информацию о пассажирах для каждого билета:
+-- имя пассажира, email, номер телефона, стоимость билета, класс перелёта и номер места;
+
+SELECT f.flight_id
+	  ,f.flight_no
+	  ,ad.airport_name->>'ru' AS dep_airport_name
+	  ,ad.city->>'ru' AS dep_city
+	  ,f.scheduled_departure
+	  ,ad2.aircraft_code
+	  ,ad2.model->>'ru' AS aircraft_model_ru
+	  ,tf.ticket_no
+	  ,t.passenger_name
+	  ,t.contact_data->>'phone' AS passenger_phone
+	  ,t.contact_data->>'email' AS passenger_email
+	  ,tf.amount AS ticket_price
+	  ,tf.fare_conditions
+	  ,bp.seat_no
+  FROM flights f 
+LEFT JOIN airports_data ad
+	ON f.departure_airport = ad.airport_code
+LEFT JOIN aircrafts_data ad2 
+	ON f.aircraft_code = ad2.aircraft_code
+--	USING (aircraft_code) -- альтернатива ON f.aircraft_code = ad2.aircraft_code
+LEFT JOIN ticket_flights tf
+	ON f.flight_id = tf.flight_id
+LEFT JOIN tickets t
+	ON tf.ticket_no = t.ticket_no 
+LEFT JOIN boarding_passes bp 
+	ON tf.ticket_no = bp.ticket_no 
+	AND tf.flight_id = bp.flight_id 
+WHERE f.scheduled_departure::text LIKE ('2017-04%')
+;
+
+
+-- Task 4
+-- Вывести такие же поля для первых пяти рейсов в мае 2017 года, в которых присутствовал класс
+-- Business;
+
+SELECT f.flight_id
+	  ,f.flight_no
+	  ,ad.airport_name->>'ru' AS dep_airport_name
+	  ,ad.city->>'ru' AS dep_city
+	  ,f.scheduled_departure
+	  ,ad2.aircraft_code
+	  ,ad2.model->>'ru' AS aircraft_model_ru
+	  ,tf.ticket_no
+	  ,t.passenger_name
+	  ,t.contact_data->>'phone' AS passenger_phone
+	  ,t.contact_data->>'email' AS passenger_email
+	  ,tf.amount AS ticket_price
+	  ,tf.fare_conditions
+	  ,bp.seat_no
+  FROM flights f 
+LEFT JOIN airports_data ad
+	ON f.departure_airport = ad.airport_code
+LEFT JOIN aircrafts_data ad2 
+	ON f.aircraft_code = ad2.aircraft_code
+--	USING (aircraft_code) -- альтернатива ON f.aircraft_code = ad2.aircraft_code
+LEFT JOIN ticket_flights tf
+	ON f.flight_id = tf.flight_id
+LEFT JOIN tickets t
+	ON tf.ticket_no = t.ticket_no 
+LEFT JOIN boarding_passes bp 
+	ON tf.ticket_no = bp.ticket_no 
+	AND tf.flight_id = bp.flight_id 
+WHERE f.flight_id IN
+					(
+					SELECT f.flight_id
+					  FROM flights f 
+					LEFT JOIN aircrafts_data ad USING (aircraft_code)
+					LEFT JOIN seats s USING (aircraft_code)
+					WHERE f.scheduled_departure::text LIKE ('2017-05%')
+					  AND s.fare_conditions = 'Business'
+					GROUP BY f.flight_id,f.actual_departure
+					ORDER BY f.actual_departure 
+					LIMIT 5
+					)
+;
+
+					
+-- Task 5
+-- Вывести список рейсов с информацией о модели самолета и количестве 
+-- проданных билетов за 2016 год; 
+
+SELECT f.flight_id
+	  ,ad.model->>'en' AS aircraft_model_en
+--	  ,f.status 
+	  ,count(tf.ticket_no) AS tickets_count
+  FROM flights f 
+LEFT JOIN aircrafts_data ad
+	ON f.aircraft_code = ad.aircraft_code 
+LEFT JOIN ticket_flights tf 
+	ON f.flight_id = tf.flight_id 
+WHERE f.scheduled_departure BETWEEN '2016-01-01' AND '2017-01-01'
+GROUP BY f.flight_id
+	    ,ad.model->>'en'
+;
+
+
+-- способ сравнения дат с помощью BETWEEN
+SELECT f.scheduled_departure
+  FROM flights f 
+ WHERE f.scheduled_departure BETWEEN to_date('2016-01-01', 'YYYY-MM-DD') 
+ 								 AND to_date('2017-01-01', 'YYYY-MM-DD')
+;
+
+
+-- вычитание 1 секунды из даты/времени
+SELECT f.scheduled_departure
+	  ,f.scheduled_departure - interval '1 seconds' AS new_timestamp
+  FROM flights f
+;
+
+
+-- Task 7
+-- Вывести день недели вылета для всех рейсов.
+SELECT f.scheduled_departure
+	  ,f.scheduled_departure - interval '1 s' AS new_timestamp
+	  ,CASE extract(dow FROM f.scheduled_departure)
+		  WHEN 0 THEN 'Вс'
+		  WHEN 1 THEN 'Пн'
+		  WHEN 2 THEN 'Вт'
+		  WHEN 3 THEN 'Ср'
+		  WHEN 4 THEN 'Чт'
+		  WHEN 5 THEN 'Пт'
+		  WHEN 6 THEN 'Сб'
+	  END
+  FROM flights f
+;
+
+
+
+
+
+					
